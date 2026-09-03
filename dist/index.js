@@ -1,12 +1,10 @@
-"use strict";
-const fallbackProducts = [
-    { id: "cloud-bed", name: "Cloud Nap Bed", category: "Dogs", price: 68, description: "A washable, supportive bed for excellent naps.", icon: "☁️", color: "#dbe9df" },
-    { id: "mouse-toy", name: "Wool Mouse Duo", category: "Cats", price: 14, description: "Soft, natural-wool toys made for curious paws.", icon: "🐭", color: "#f4dfcf" },
-    { id: "walk-set", name: "Everyday Walk Set", category: "Dogs", price: 42, description: "A comfortable leash and harness for daily adventures.", icon: "🦮", color: "#d9e4ee" },
-    { id: "slow-bowl", name: "Calm Eating Bowl", category: "Everyday", price: 24, description: "A non-slip bowl that helps pets eat at an easy pace.", icon: "🥣", color: "#eee4cb" },
-    { id: "groom-brush", name: "Gentle Groom Brush", category: "Everyday", price: 18, description: "Rounded bristles for a calm, comfortable groom.", icon: "🪮", color: "#e3dced" },
-    { id: "treat-pouch", name: "Pocket Treat Pouch", category: "Dogs", price: 22, description: "A neat, washable pouch for training and walks.", icon: "🦴", color: "#ead9d2" }
-];
+import { productPresentation } from "./catalog-style.js";
+const fallbackPrices = { "cloud-bed": 68, "mouse-toy": 14, "walk-set": 42, "slow-bowl": 24, "groom-brush": 18, "treat-pouch": 22 };
+function styledProduct(record) {
+    const presentation = productPresentation[record.id];
+    return presentation ? { id: record.id, price: record.price, ...presentation } : undefined;
+}
+const fallbackProducts = Object.entries(fallbackPrices).flatMap(([id, price]) => { const product = styledProduct({ id, price }); return product ? [product] : []; });
 let products = fallbackProducts;
 class ApiClient {
     constructor(baseUrl) {
@@ -30,7 +28,10 @@ class StorefrontService {
         this.productsApi = new ApiClient("http://localhost:4002");
         this.paymentsApi = new ApiClient("http://localhost:4003");
     }
-    async loadProducts() { return this.productsApi.get("/products"); }
+    async loadProducts() {
+        const records = await this.productsApi.get("/products");
+        return records.flatMap((record) => { const product = styledProduct(record); return product ? [product] : []; });
+    }
     async createCheckout(items) {
         return this.paymentsApi.post("/checkout-sessions", { items: items.map(({ id, quantity }) => ({ productId: id, quantity })) });
     }
