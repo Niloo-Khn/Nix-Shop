@@ -1,7 +1,7 @@
 type Product = { id: string; name: string; category: "Dogs" | "Cats" | "Everyday"; price: number; description: string; icon: string; color: string };
 type CartItem = Product & { quantity: number };
 
-const products: Product[] = [
+const fallbackProducts: Product[] = [
   { id: "cloud-bed", name: "Cloud Nap Bed", category: "Dogs", price: 68, description: "A washable, supportive bed for excellent naps.", icon: "☁️", color: "#dbe9df" },
   { id: "mouse-toy", name: "Wool Mouse Duo", category: "Cats", price: 14, description: "Soft, natural-wool toys made for curious paws.", icon: "🐭", color: "#f4dfcf" },
   { id: "walk-set", name: "Everyday Walk Set", category: "Dogs", price: 42, description: "A comfortable leash and harness for daily adventures.", icon: "🦮", color: "#d9e4ee" },
@@ -9,6 +9,31 @@ const products: Product[] = [
   { id: "groom-brush", name: "Gentle Groom Brush", category: "Everyday", price: 18, description: "Rounded bristles for a calm, comfortable groom.", icon: "🪮", color: "#e3dced" },
   { id: "treat-pouch", name: "Pocket Treat Pouch", category: "Dogs", price: 22, description: "A neat, washable pouch for training and walks.", icon: "🦴", color: "#ead9d2" }
 ];
+let products: Product[] = fallbackProducts;
+
+class ApiClient {
+  constructor(private readonly baseUrl: string) {}
+  async get<T>(path: string): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`API request failed with ${response.status}`);
+    return response.json() as Promise<T>;
+  }
+  async post<T>(path: string, body: unknown): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) throw new Error(`API request failed with ${response.status}`);
+    return response.json() as Promise<T>;
+  }
+}
+
+class StorefrontService {
+  private readonly productsApi = new ApiClient("http://localhost:4002");
+  private readonly paymentsApi = new ApiClient("http://localhost:4003");
+  async loadProducts(): Promise<Product[]> { return this.productsApi.get<Product[]>("/products"); }
+  async createCheckout(items: CartItem[]): Promise<{ checkoutUrl: string }> {
+    return this.paymentsApi.post("/checkout-sessions", { items: items.map(({ id, quantity }) => ({ productId: id, quantity })) });
+  }
+}
+const storefront = new StorefrontService();
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 let cart: CartItem[] = safelyParseCart(localStorage.getItem("nix-shop-cart") ?? "[]");
@@ -89,9 +114,14 @@ function bindActions(): void {
   }));
   document.querySelectorAll<HTMLButtonElement>("[data-increase]").forEach((button) => button.addEventListener("click", () => changeQuantity(button.dataset.increase ?? "", 1)));
   document.querySelectorAll<HTMLButtonElement>("[data-decrease]").forEach((button) => button.addEventListener("click", () => changeQuantity(button.dataset.decrease ?? "", -1)));
-  document.querySelector<HTMLButtonElement>("#checkout-button")?.addEventListener("click", () => {
+  document.querySelector<HTMLButtonElement>("#checkout-button")?.addEventListener("click", async () => {
     const message = document.querySelector<HTMLDivElement>("#checkout-message");
-    if (message) message.textContent = "Payment setup is the next step. Connect a hosted checkout provider before accepting real orders.";
+    try {
+      const session = await storefront.createCheckout(cart);
+      if (message) message.textContent = `Secure checkout session created. Development URL: ${session.checkoutUrl}`;
+    } catch {
+      if (message) message.textContent = "Payment service is unavailable. Start the backend services and try again.";
+    }
   });
 }
 
@@ -106,4 +136,8 @@ function render(): void {
 }
 
 window.addEventListener("hashchange", render);
-render();
+storefront.loadProducts().then((catalog) => {
+  products = catalog;
+  cart = safelyParseCart(localStorage.getItem("nix-shop-cart") ?? "[]");
+  render();
+}).catch(() => render());
