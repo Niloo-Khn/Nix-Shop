@@ -1,0 +1,8 @@
+{
+  "name": "nix-shop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A minimal pet products storefront built with TypeScript.",
+  "scripts": { "build": "tsc", "check": "tsc --noEmit", "serve": "npx --yes serve ." },
+  "devDependencies": { "typescript": "^5.9.2" }
+}
