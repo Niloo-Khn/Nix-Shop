@@ -33,12 +33,14 @@ class StorefrontService {
   private readonly productsApi = new ApiClient(API_ENDPOINTS.products);
   private readonly paymentsApi = new ApiClient(API_ENDPOINTS.payments);
   private readonly helpApi = new ApiClient(API_ENDPOINTS.help);
+  private readonly ordersApi = new ApiClient(API_ENDPOINTS.orders);
   async loadProducts(): Promise<Product[]> {
     const records = await this.productsApi.get<ProductRecord[]>("/products");
     return records.flatMap((record) => { const product = styledProduct(record); return product ? [product] : []; });
   }
   async createCheckout(items: CartItem[]): Promise<{ checkoutUrl: string }> {
-    return this.paymentsApi.post("/checkout-sessions", { items: items.map(({ id, quantity }) => ({ productId: id, quantity })) });
+    const order = await this.ordersApi.post<{ id: string }>("/orders", { items: items.map(({ id, quantity }) => ({ productId: id, quantity })) });
+    return this.paymentsApi.post("/checkout-sessions", { orderId: order.id });
   }
   async register(input: { email: string; displayName: string; password: string }): Promise<{ displayName: string }> { return this.accountsApi.post("/accounts/register", input); }
   async login(input: { email: string; password: string }): Promise<{ accessToken: string }> { return this.accountsApi.post("/accounts/login", input); }

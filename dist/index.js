@@ -31,13 +31,15 @@ class StorefrontService {
         this.productsApi = new ApiClient(API_ENDPOINTS.products);
         this.paymentsApi = new ApiClient(API_ENDPOINTS.payments);
         this.helpApi = new ApiClient(API_ENDPOINTS.help);
+        this.ordersApi = new ApiClient(API_ENDPOINTS.orders);
     }
     async loadProducts() {
         const records = await this.productsApi.get("/products");
         return records.flatMap((record) => { const product = styledProduct(record); return product ? [product] : []; });
     }
     async createCheckout(items) {
-        return this.paymentsApi.post("/checkout-sessions", { items: items.map(({ id, quantity }) => ({ productId: id, quantity })) });
+        const order = await this.ordersApi.post("/orders", { items: items.map(({ id, quantity }) => ({ productId: id, quantity })) });
+        return this.paymentsApi.post("/checkout-sessions", { orderId: order.id });
     }
     async register(input) { return this.accountsApi.post("/accounts/register", input); }
     async login(input) { return this.accountsApi.post("/accounts/login", input); }
