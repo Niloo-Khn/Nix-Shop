@@ -3,6 +3,8 @@ export const API_ENDPOINTS = {
     products: "http://localhost:4002",
     payments: "http://localhost:4003",
     help: "http://localhost:4004",
-    orders: "http://localhost:4005"
+    orders: "http://localhost:4005",
+    promotions: "http://localhost:4006",
+    returns: "http://localhost:4007"
 };
 //# sourceMappingURL=api-config.js.map

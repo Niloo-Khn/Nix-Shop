@@ -34,18 +34,22 @@ class StorefrontService {
   private readonly paymentsApi = new ApiClient(API_ENDPOINTS.payments);
   private readonly helpApi = new ApiClient(API_ENDPOINTS.help);
   private readonly ordersApi = new ApiClient(API_ENDPOINTS.orders);
+  private readonly promotionsApi = new ApiClient(API_ENDPOINTS.promotions);
+  private readonly returnsApi = new ApiClient(API_ENDPOINTS.returns);
   async loadProducts(): Promise<Product[]> {
     const records = await this.productsApi.get<ProductRecord[]>("/products");
     return records.flatMap((record) => { const product = styledProduct(record); return product ? [product] : []; });
   }
-  async createCheckout(items: CartItem[]): Promise<{ checkoutUrl: string }> {
-    const order = await this.ordersApi.post<{ id: string }>("/orders", { items: items.map(({ id, quantity }) => ({ productId: id, quantity })) });
+  async createCheckout(items: CartItem[], promotionCode?: string): Promise<{ checkoutUrl: string }> {
+    const order = await this.ordersApi.post<{ id: string }>("/orders", { items: items.map(({ id, quantity }) => ({ productId: id, quantity })), ...(promotionCode ? { promotionCode } : {}) });
     return this.paymentsApi.post("/checkout-sessions", { orderId: order.id });
   }
   async register(input: { email: string; displayName: string; password: string }): Promise<{ displayName: string }> { return this.accountsApi.post("/accounts/register", input); }
   async login(input: { email: string; password: string }): Promise<{ accessToken: string }> { return this.accountsApi.post("/accounts/login", input); }
   async helpArticles(): Promise<Array<{ id: string }>> { return this.helpApi.get("/articles"); }
   async createTicket(input: { email: string; subject: string; message: string }): Promise<{ id: string }> { return this.helpApi.post("/tickets", input); }
+  async promotions(): Promise<Array<{ id: string; code: string }>> { return this.promotionsApi.get("/promotions"); }
+  async createReturn(input:{orderId:string;productId:string;quantity:number;reasonKey:string}):Promise<{id:string}>{return this.returnsApi.post("/returns",{orderId:input.orderId,reasonKey:input.reasonKey,items:[{productId:input.productId,quantity:input.quantity}]});}
 }
 const storefront = new StorefrontService();
 
@@ -77,7 +81,7 @@ function updateCartCount(): void {
 }
 
 function header(): string {
-  return `<a class="skip-link" href="#main">${t("nav.skip")}</a><header class="site-header"><a class="brand" href="#/" aria-label="${t("nav.homeLabel")}"><span class="brand-mark">${icon("brand")}</span>${t("brand.name")}</a><nav aria-label="${t("nav.label")}"><a href="#/shop">${t("nav.shop")}</a><a href="#/about">${t("nav.about")}</a><a href="#/help">${t("nav.help")}</a><a href="#/account">${t("nav.account")}</a><a class="cart-link" href="#/payment" aria-label="${t("nav.cartLabel")}">${t("nav.cart")} <span data-cart-count class="cart-count"></span></a></nav></header>`;
+  return `<a class="skip-link" href="#main">${t("nav.skip")}</a><header class="site-header"><a class="brand" href="#/" aria-label="${t("nav.homeLabel")}"><span class="brand-mark">${icon("brand")}</span>${t("brand.name")}</a><nav aria-label="${t("nav.label")}"><a href="#/shop">${t("nav.shop")}</a><a href="#/promotions">${t("nav.promotions")}</a><a href="#/returns">${t("nav.returns")}</a><a href="#/about">${t("nav.about")}</a><a href="#/help">${t("nav.help")}</a><a href="#/account">${t("nav.account")}</a><a class="cart-link" href="#/payment" aria-label="${t("nav.cartLabel")}">${t("nav.cart")} <span data-cart-count class="cart-count"></span></a></nav></header>`;
 }
 
 function footer(): string {
@@ -104,8 +108,11 @@ function paymentPage(): string {
   const subtotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
   const shipping = subtotal === 0 || subtotal >= 60 ? 0 : 6;
   const items = cart.length ? cart.map((item) => `<li><div class="mini-art" style="--card-color:${item.color}">${item.icon}</div><div><strong>${item.name}</strong><small>${money.format(item.price)} ${t("product.each")}</small><div class="quantity"><button data-decrease="${item.id}" aria-label="${t("product.removeOne",{name:item.name})}">−</button><span>${item.quantity}</span><button data-increase="${item.id}" aria-label="${t("product.addOne",{name:item.name})}">+</button></div></div><strong>${money.format(item.price * item.quantity)}</strong></li>`).join("") : `<li class="empty-cart"><span>${icon("cart")}</span><div><strong>${t("checkout.emptyTitle")}</strong><small>${t("checkout.emptyBody")}</small></div></li>`;
-  return `${header()}<main id="main" class="checkout-page"><section class="checkout-copy"><p class="eyebrow">${t("checkout.eyebrow")}</p><h1>${t("checkout.title")}</h1><a class="text-link" href="#/shop">${t("checkout.continueShopping")}</a><ul class="cart-items">${items}</ul></section><aside class="order-card"><h2>${t("checkout.summary")}</h2><dl><div><dt>${t("checkout.subtotal")}</dt><dd>${money.format(subtotal)}</dd></div><div><dt>${t("checkout.shipping")}</dt><dd>${shipping ? money.format(shipping) : t("checkout.free")}</dd></div><div class="order-total"><dt>${t("checkout.total")}</dt><dd>${money.format(subtotal + shipping)}</dd></div></dl><button id="checkout-button" class="button button-wide" ${cart.length ? "" : "disabled"}>${t("checkout.action")}</button><p class="secure-note"><span>${icon("lock")}</span> ${t("checkout.security")}</p><div id="checkout-message" class="checkout-message" role="status" aria-live="polite"></div></aside></main>${footer()}`;
+  return `${header()}<main id="main" class="checkout-page"><section class="checkout-copy"><p class="eyebrow">${t("checkout.eyebrow")}</p><h1>${t("checkout.title")}</h1><a class="text-link" href="#/shop">${t("checkout.continueShopping")}</a><ul class="cart-items">${items}</ul></section><aside class="order-card"><h2>${t("checkout.summary")}</h2><dl><div><dt>${t("checkout.subtotal")}</dt><dd>${money.format(subtotal)}</dd></div><div><dt>${t("checkout.shipping")}</dt><dd>${shipping ? money.format(shipping) : t("checkout.free")}</dd></div><div class="order-total"><dt>${t("checkout.total")}</dt><dd>${money.format(subtotal + shipping)}</dd></div></dl><label class="promo-field">${t("promotion.code")} <small>${t("promotion.optional")}</small><input id="promotion-code" maxlength="40"></label><button id="checkout-button" class="button button-wide" ${cart.length ? "" : "disabled"}>${t("checkout.action")}</button><p class="secure-note"><span>${icon("lock")}</span> ${t("checkout.security")}</p><div id="checkout-message" class="checkout-message" role="status" aria-live="polite"></div></aside></main>${footer()}`;
 }
+
+function promotionsPage():string{return `${header()}<main id="main" class="portal-page"><section><p class="eyebrow">${t("promotion.eyebrow")}</p><h1>${t("promotion.title")}</h1><p class="portal-intro">${t("promotion.intro")}</p></section><div id="promotion-list" class="value-grid" aria-live="polite"><p>${t("promotion.loading")}</p></div></main>${footer()}`;}
+function returnsPage():string{return `${header()}<main id="main" class="portal-page"><section><p class="eyebrow">${t("return.eyebrow")}</p><h1>${t("return.title")}</h1><p class="portal-intro">${t("return.intro")}</p></section><form id="return-form" class="form-card single-form"><label>${t("return.orderId")}<input name="orderId" required></label><label>${t("return.productId")}<input name="productId" required></label><label>${t("return.quantity")}<input name="quantity" type="number" min="1" max="10" value="1" required></label><label>${t("return.reason")}<select name="reasonKey"><option value="return.size">${t("return.reasonSize")}</option><option value="return.damaged">${t("return.reasonDamaged")}</option><option value="return.other">${t("return.reasonOther")}</option></select></label><button class="button" type="submit">${t("return.action")}</button><p class="form-status" role="status"></p></form></main>${footer()}`;}
 
 function accountPage(): string {
   return `${header()}<main id="main" class="portal-page"><section><p class="eyebrow">${t("account.eyebrow")}</p><h1>${t("account.title")}</h1><p class="portal-intro">${t("account.intro")}</p></section><div class="portal-grid"><form id="login-form" class="form-card"><h2>${t("account.signIn")}</h2><label>${t("field.email")}<input name="email" type="email" autocomplete="email" maxlength="254" required></label><label>${t("field.password")}<input name="password" type="password" autocomplete="current-password" minlength="10" required></label><button class="button" type="submit">${t("account.signIn")}</button><p class="form-status" role="status"></p></form><form id="register-form" class="form-card"><h2>${t("account.create")}</h2><label>${t("field.name")}<input name="displayName" autocomplete="name" maxlength="80" required></label><label>${t("field.email")}<input name="email" type="email" autocomplete="email" maxlength="254" required></label><label>${t("field.password")}<input name="password" type="password" autocomplete="new-password" minlength="10" required></label><small>${t("account.passwordHint")}</small><button class="button" type="submit">${t("account.create")}</button><p class="form-status" role="status"></p></form></div></main>${footer()}`;
@@ -139,7 +146,7 @@ function bindActions(): void {
   document.querySelector<HTMLButtonElement>("#checkout-button")?.addEventListener("click", async () => {
     const message = document.querySelector<HTMLDivElement>("#checkout-message");
     try {
-      const session = await storefront.createCheckout(cart);
+      const promotionCode=document.querySelector<HTMLInputElement>("#promotion-code")?.value.trim();const session = await storefront.createCheckout(cart,promotionCode);
       if (message) message.textContent = t("checkout.created", { url: session.checkoutUrl });
     } catch {
       if (message) message.textContent = t("checkout.unavailable");
@@ -147,7 +154,10 @@ function bindActions(): void {
   });
   bindAccountForms();
   bindHelpCenter();
+  bindPromotionsAndReturns();
 }
+
+function bindPromotionsAndReturns():void{const list=document.querySelector<HTMLElement>("#promotion-list");if(list)storefront.promotions().then((promotions)=>{list.replaceChildren(...promotions.flatMap((promotion)=>{const key=promotion.id==="welcome-10"?"welcome":"pet";const article=document.createElement("article");const title=document.createElement("h3");const body=document.createElement("p");title.textContent=t(`promotion.${key}Title` as "promotion.welcomeTitle"|"promotion.petTitle");body.textContent=t(`promotion.${key}Body` as "promotion.welcomeBody"|"promotion.petBody");article.append(title,body);return[article];}));}).catch(()=>{list.textContent=t("promotion.unavailable");});document.querySelector<HTMLFormElement>("#return-form")?.addEventListener("submit",async(event)=>{event.preventDefault();const form=event.currentTarget as HTMLFormElement;try{const request=await storefront.createReturn({orderId:formValue(form,"orderId"),productId:formValue(form,"productId"),quantity:Number(formValue(form,"quantity")),reasonKey:formValue(form,"reasonKey")});setFormStatus(form,t("return.created",{id:request.id.slice(0,8)}));form.reset();}catch{setFormStatus(form,t("return.failed"));}});}
 
 function formValue(form: HTMLFormElement, name: string): string { return String(new FormData(form).get(name) ?? "").trim(); }
 function setFormStatus(form: HTMLFormElement, message: string): void { const status = form.querySelector<HTMLElement>(".form-status"); if (status) status.textContent = message; }
@@ -181,7 +191,7 @@ function render(): void {
   const route = window.location.hash.replace(/^#/, "") || "/";
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) return;
-  const pages: Record<string, () => string> = { "/": homePage, "/shop": shopPage, "/about": aboutPage, "/payment": paymentPage, "/account": accountPage, "/help": helpPage };
+  const pages: Record<string, () => string> = { "/": homePage, "/shop": shopPage, "/about": aboutPage, "/payment": paymentPage, "/account": accountPage, "/help": helpPage, "/promotions":promotionsPage, "/returns":returnsPage };
   app.innerHTML = (pages[route] ?? notFoundPage)();
   document.title = route === "/" ? t("brand.name") : `${route.slice(1).replace(/^./, (letter) => letter.toUpperCase())} · ${t("brand.name")}`;
   bindActions(); updateCartCount(); window.scrollTo({ top: 0, behavior: "instant" });
